@@ -23,9 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Agent context (kept local for now)
-AGENTS.md
-CLAUDE.md
 
 # Playwright
 test-results/
