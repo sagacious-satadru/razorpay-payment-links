@@ -1,5 +1,6 @@
 import { checkPaymentAmount } from '../domain/payments'
 import type { NewLinkInput, PaymentLink } from '../domain/types'
+import { getBrowserStorage, readLinks, writeLinks } from './storage'
 
 /** The only surface the UI talks to; a real backend can implement the same interface. */
 export interface LinksApi {
@@ -18,7 +19,10 @@ export interface FailureControl {
 export interface CreateLinksApiOptions {
   delayMs?: number
   now?: () => number
+  /** Initial data. When omitted, links are loaded from `storage`. */
   seed?: PaymentLink[]
+  /** Where to persist links after every change (and load them from on start). Default: none. */
+  storage?: Storage | null
 }
 
 export class ApiError extends Error {}
@@ -28,9 +32,11 @@ const NETWORK_MESSAGE = 'Something went wrong while contacting the server. Pleas
 export function createLinksApi(
   options: CreateLinksApiOptions = {},
 ): LinksApi & FailureControl {
-  const { delayMs = 300, now = Date.now, seed = [] } = options
-  let links: PaymentLink[] = [...seed].sort((a, b) => b.createdAt - a.createdAt)
-  let sequence = seed.length
+  const { delayMs = 300, now = Date.now, seed, storage = null } = options
+  let links: PaymentLink[] = [...(seed ?? readLinks(storage))].sort((a, b) => b.createdAt - a.createdAt)
+  let sequence = 0
+  // Ids must stay unique across page loads, so they include a time component.
+  const idPrefix = `plink_${Date.now().toString(36)}`
   let failuresLeft = 0
   let failAll = false
 
@@ -51,11 +57,12 @@ export function createLinksApi(
         sequence += 1
         const link: PaymentLink = {
           ...input,
-          id: `plink_${sequence}`,
+          id: `${idPrefix}_${sequence}`,
           createdAt: now(),
           payments: [],
         }
         links = [link, ...links]
+        writeLinks(storage, links)
         return { ...link }
       }),
 
@@ -70,6 +77,7 @@ export function createLinksApi(
           ...link.payments,
           { id: `${link.id}_pay_${link.payments.length + 1}`, amountPaise, at: now() },
         ]
+        writeLinks(storage, links)
         return { ...link }
       }),
 
@@ -82,4 +90,4 @@ export function createLinksApi(
   }
 }
 
-export const defaultLinksApi: LinksApi = createLinksApi({ delayMs: 300 })
+export const defaultLinksApi: LinksApi = createLinksApi({ delayMs: 300, storage: getBrowserStorage() })
