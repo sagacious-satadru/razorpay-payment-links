@@ -76,3 +76,11 @@ e2e/           Playwright specs (expiry is tested with page.clock)
 - The minimum first payment only applies while nothing has been paid; later payments can be any
   amount > 0 and <= due.
 - Out of scope: edit, cancel, delete, refunds, search, pagination.
+
+
+## Agent transcript
+razorpay-frontend-agentic-readiness-agent-transcript.txt is the implementation session (added
+after submission; no code changes; submitted code is ea386f8). The scaffold, AGENTS.md and the
+plans for sections 2 and 4 came from a separate planning session with Claude Code, while using the `brainstorming` skill from [Obra superpowers skill](https://github.com/obra/superpowers). Their output
+is AGENTS.md: section 2 answers under "Assumptions", design and tests under "Design"/"Tests",
+section 4 under "Requirement change 1", "Assumptions for change 1" and "Change log".
