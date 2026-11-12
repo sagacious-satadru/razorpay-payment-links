@@ -7,13 +7,12 @@ All data lives in memory behind a mock async API (no backend, nothing persists a
 
 ## Run it
 
-```bash
-pnpm install
-pnpm dev          # http://localhost:5173
-pnpm test         # unit + component tests (Vitest)
-pnpm e2e          # Playwright (starts the dev server itself)
-pnpm typecheck && pnpm lint && pnpm build
-```
+- Install: `pnpm install && pnpm exec playwright install chromium`
+- Run: `pnpm dev` (http://localhost:5173)
+- Unit tests: `pnpm test`
+- E2E: `pnpm e2e`
+
+Also: `pnpm typecheck`, `pnpm lint`, `pnpm build`.
 
 ## What it does
 
