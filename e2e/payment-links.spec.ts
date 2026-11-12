@@ -39,7 +39,8 @@ test('create -> appears in the list -> filter by status', async ({ page }) => {
   await page.getByRole('button', { name: /^Active/ }).click()
   await expect(row).toBeVisible()
 
-  await row.getByRole('button', { name: /Mark as paid/ }).click()
+  await row.getByRole('button', { name: /Record payment/ }).click()
+  await row.getByRole('button', { name: 'Record', exact: true }).click()
   await expect(page.getByText('No active links')).toBeVisible()
   await page.getByRole('button', { name: /^Paid/ }).click()
   await expect(row).toContainText('Paid')
@@ -67,12 +68,12 @@ test('a link flips to Expired when its expiry passes (page.clock)', async ({ pag
 
   const row = page.getByRole('row', { name: /Short lived/ })
   await expect(row.getByText('Active')).toBeVisible()
-  await expect(row.getByRole('button', { name: /Mark as paid/ })).toBeVisible()
+  await expect(row.getByRole('button', { name: /Record payment/ })).toBeVisible()
 
   await page.clock.fastForward('06:00')
 
   await expect(row.getByText('Expired', { exact: true })).toBeVisible()
-  await expect(row.getByRole('button', { name: /Mark as paid/ })).toHaveCount(0)
+  await expect(row.getByRole('button', { name: /Record payment/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /^Expired \(1\)/ })).toBeVisible()
 })
 
@@ -84,6 +85,8 @@ test('can be used with the keyboard only', async ({ page }) => {
   await page.keyboard.press('Tab')
   await expect(page.getByLabel('Description')).toBeFocused()
   await page.keyboard.type('Keyboard link')
+  await page.keyboard.press('Tab')
+  await expect(page.getByLabel('Allow partial payments')).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(page.getByLabel('Customer email')).toBeFocused()
   await page.keyboard.type('kb@example.com')

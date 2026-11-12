@@ -7,7 +7,8 @@ import { EmptyState } from './components/EmptyState'
 import { ErrorAlert } from './components/ErrorAlert'
 import { LinksList } from './components/LinksList'
 import { StatusFilter } from './components/StatusFilter'
-import { countByStatus, duePaise, filterLinks } from './domain/status'
+import { formatPaise } from './domain/money'
+import { countByStatus, filterLinks } from './domain/status'
 import type { StatusFilter as Filter } from './domain/types'
 import { useLinks } from './hooks/useLinks'
 import { useNow } from './hooks/useNow'
@@ -33,13 +34,12 @@ export default function App({ api = defaultLinksApi }: AppProps) {
   const counts = countByStatus(links, now)
   const visible = filterLinks(links, filter, now)
 
-  // Temporary until the inline "Record payment" form: settle the full amount due.
-  function payInFull(id: string) {
-    const link = links.find((candidate) => candidate.id === id)
-    if (link) void recordPayment(id, duePaise(link))
-  }
-  function retryAction() {
-    if (actionError) payInFull(actionError.id)
+  const [announcement, setAnnouncement] = useState('')
+
+  async function handleRecordPayment(id: string, amountPaise: number): Promise<boolean> {
+    const ok = await recordPayment(id, amountPaise)
+    if (ok) setAnnouncement(`Payment of ${formatPaise(amountPaise)} recorded.`)
+    return ok
   }
 
   return (
@@ -56,6 +56,9 @@ export default function App({ api = defaultLinksApi }: AppProps) {
 
         <section aria-labelledby="list-heading" className="card">
           <h2 id="list-heading">Your payment links</h2>
+          <p role="status" aria-live="polite" className="sr-only">
+            {announcement}
+          </p>
 
           {loadState === 'loading' && <p role="status">Loading payment links…</p>}
 
@@ -69,7 +72,9 @@ export default function App({ api = defaultLinksApi }: AppProps) {
               {actionError && (
                 <ErrorAlert
                   message={actionError.message}
-                  onRetry={() => retryAction()}
+                  onRetry={() =>
+                    void handleRecordPayment(actionError.id, actionError.amountPaise)
+                  }
                 />
               )}
               {visible.length === 0 ? (
@@ -79,7 +84,7 @@ export default function App({ api = defaultLinksApi }: AppProps) {
                   links={visible}
                   now={now}
                   pendingIds={pendingIds}
-                  onMarkPaid={payInFull}
+                  onRecordPayment={handleRecordPayment}
                 />
               )}
             </>

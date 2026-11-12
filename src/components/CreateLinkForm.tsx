@@ -79,13 +79,14 @@ export function CreateLinkForm({ onCreate }: CreateLinkFormProps) {
   const lastInput = useRef<NewLinkInput | null>(null)
 
   const amountRef = useRef<HTMLInputElement>(null)
+  const minFirstPaymentRef = useRef<HTMLInputElement>(null)
   const descriptionRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const expiryRef = useRef<HTMLInputElement>(null)
   const focusTargets: Record<FieldName, RefObject<HTMLInputElement | null>> = {
     amount: amountRef,
-    minFirstPayment: amountRef, // temporary; real field arrives with the UI step
+    minFirstPayment: minFirstPaymentRef,
     description: descriptionRef,
     contact: emailRef,
     email: emailRef,
@@ -113,8 +114,27 @@ export function CreateLinkForm({ onCreate }: CreateLinkFormProps) {
       setSuccess('')
       const isContact = field === 'email' || field === 'phone'
       if (errors[field] || (isContact && errors.contact)) {
-        revalidate(next, isContact ? [field, 'contact'] : [field])
+        const fields: FieldName[] = isContact ? [field, 'contact'] : [field]
+        // The minimum is validated against the amount, so keep its error in step with it.
+        if (field === 'amount' && errors.minFirstPayment) fields.push('minFirstPayment')
+        revalidate(next, fields)
+      } else if (field === 'amount' && errors.minFirstPayment) {
+        revalidate(next, ['minFirstPayment'])
       }
+    }
+  }
+
+  function handleAllowPartialChange(event: ChangeEvent<HTMLInputElement>) {
+    const allowPartial = event.target.checked
+    setValues({ ...values, allowPartial })
+    setSuccess('')
+    // The minimum is only validated while the box is ticked.
+    if (!allowPartial) {
+      setErrors((previous) => {
+        const next = { ...previous }
+        delete next.minFirstPayment
+        return next
+      })
     }
   }
 
@@ -199,6 +219,42 @@ export function CreateLinkForm({ onCreate }: CreateLinkFormProps) {
             />
           )}
         </Field>
+      </div>
+
+      <div className="form__grid">
+        <div className="field">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={values.allowPartial}
+              onChange={handleAllowPartialChange}
+            />
+            Allow partial payments
+          </label>
+        </div>
+
+        {values.allowPartial && (
+          <Field
+            baseId={baseId}
+            name="minFirstPayment"
+            label="Minimum first payment (INR)"
+            hint="The smallest first payment the customer may make. Cannot exceed the amount."
+            error={errors.minFirstPayment}
+          >
+            {(a11y) => (
+              <input
+                {...a11y}
+                ref={minFirstPaymentRef}
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={values.minFirstPayment}
+                onChange={handleChange('minFirstPayment')}
+                onBlur={handleBlur('minFirstPayment')}
+              />
+            )}
+          </Field>
+        )}
       </div>
 
       <fieldset className="fieldset">

@@ -56,16 +56,24 @@ describe('App', () => {
     expect(rows[1]).toHaveTextContent('First link')
   })
 
-  it('marks a link as paid and filters by status', async () => {
+  it('records the full due (prefilled) on a no-partial link, making it Paid, and filters by status', async () => {
     const { user } = setup()
     await screen.findByText('No payment links yet')
     await createViaForm(user, '100', 'Pay me')
 
-    await user.click(screen.getByRole('button', { name: /Mark as paid: Pay me/ }))
-    expect(await screen.findByText('Paid')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Mark as paid/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Record payment: Pay me' }))
+    const input = screen.getByLabelText('Payment amount (INR)')
+    expect(input).toHaveValue('100.00')
+    expect(input).toHaveFocus()
+    expect(input).toHaveAccessibleDescription(/Partial payments are not allowed/)
+    await user.click(screen.getByRole('button', { name: 'Record' }))
+
+    expect(await screen.findByText('Paid', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Record payment/ })).not.toBeInTheDocument()
     expect(filterButton(/^Paid \(1\)/)).toBeInTheDocument()
     expect(filterButton(/^Active \(0\)/)).toBeInTheDocument()
+    expect(screen.getByText('₹100.00 paid')).toBeInTheDocument()
+    expect(screen.getByText('₹0.00 due')).toBeInTheDocument()
 
     await user.click(filterButton(/^Active/))
     expect(filterButton(/^Active/)).toHaveAttribute('aria-pressed', 'true')
@@ -76,7 +84,126 @@ describe('App', () => {
     expect(screen.getByText('Pay me')).toBeInTheDocument()
   })
 
-  it('shows links whose expiry has passed as Expired, without a Mark as paid button', async () => {
+  describe('partial payments', () => {
+    async function createPartial(user: ReturnType<typeof userEvent.setup>) {
+      await user.type(screen.getByLabelText('Amount (INR)'), '500')
+      await user.click(screen.getByLabelText('Allow partial payments'))
+      await user.type(screen.getByLabelText('Minimum first payment (INR)'), '100')
+      await user.type(screen.getByLabelText('Description'), 'Instalments')
+      await user.type(screen.getByLabelText('Customer email'), 'buyer@example.com')
+      await user.click(screen.getByRole('button', { name: 'Create payment link' }))
+      await screen.findByText('Instalments')
+    }
+
+    it('walks Active -> Partially paid -> Paid with derived paid/due and the new filter', async () => {
+      const { user } = setup()
+      await screen.findByText('No payment links yet')
+      await createPartial(user)
+
+      expect(screen.getByText('₹0.00 paid')).toBeInTheDocument()
+      expect(screen.getByText('₹500.00 due')).toBeInTheDocument()
+      expect(screen.getByText('Min. first payment ₹100.00')).toBeInTheDocument()
+      expect(filterButton(/^Partially paid \(0\)/)).toBeInTheDocument()
+
+      // first payment below the minimum is rejected inline, with focus on the field
+      await user.click(screen.getByRole('button', { name: 'Record payment: Instalments' }))
+      const input = screen.getByLabelText('Payment amount (INR)')
+      expect(input).toHaveValue('500.00')
+      await user.clear(input)
+      await user.type(input, '50')
+      await user.click(screen.getByRole('button', { name: 'Record' }))
+      expect(input).toHaveFocus()
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+      expect(input).toHaveAccessibleDescription(/at least ₹100\.00/)
+
+      // a valid part payment makes it Partially paid
+      await user.clear(input)
+      await user.type(input, '200')
+      await user.click(screen.getByRole('button', { name: 'Record' }))
+      expect(await screen.findByText('Partially paid', { selector: 'span' })).toBeInTheDocument()
+      expect(screen.getByText('₹200.00 paid')).toBeInTheDocument()
+      expect(screen.getByText('₹300.00 due')).toBeInTheDocument()
+      expect(screen.queryByText(/Min. first payment/)).not.toBeInTheDocument()
+      expect(filterButton(/^Partially paid \(1\)/)).toBeInTheDocument()
+      expect(filterButton(/^Active \(0\)/)).toBeInTheDocument()
+
+      await user.click(filterButton(/^Partially paid/))
+      expect(screen.getByText('Instalments')).toBeInTheDocument()
+
+      // over-paying is rejected; the rest makes it Paid
+      await user.click(screen.getByRole('button', { name: 'Record payment: Instalments' }))
+      const second = screen.getByLabelText('Payment amount (INR)')
+      expect(second).toHaveValue('300.00')
+      await user.clear(second)
+      await user.type(second, '300.01')
+      await user.click(screen.getByRole('button', { name: 'Record' }))
+      expect(second).toHaveAccessibleDescription(/cannot exceed the amount due \(₹300\.00\)/)
+      await user.clear(second)
+      await user.type(second, '300')
+      await user.click(screen.getByRole('button', { name: 'Record' }))
+
+      expect(await screen.findByText('No partially paid links')).toBeInTheDocument()
+      await user.click(filterButton(/^Paid/))
+      expect(screen.getByText('₹500.00 paid')).toBeInTheDocument()
+      expect(screen.getByText('₹0.00 due')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Record payment/ })).not.toBeInTheDocument()
+    })
+
+    it('rejects a part payment on a link that does not allow partial payments', async () => {
+      const { user } = setup()
+      await screen.findByText('No payment links yet')
+      await createViaForm(user, '100', 'Whole only')
+      await user.click(screen.getByRole('button', { name: 'Record payment: Whole only' }))
+      const input = screen.getByLabelText('Payment amount (INR)')
+      await user.clear(input)
+      await user.type(input, '40')
+      await user.click(screen.getByRole('button', { name: 'Record' }))
+      expect(input).toHaveAccessibleDescription(/does not allow partial payments/)
+      expect(screen.getByText('Active', { selector: 'span' })).toBeInTheDocument()
+    })
+
+    it('cancelling (button or Escape) closes the form and returns focus to its trigger', async () => {
+      const { user } = setup()
+      await screen.findByText('No payment links yet')
+      await createViaForm(user, '100', 'Cancel me')
+      const trigger = () => screen.getByRole('button', { name: 'Record payment: Cancel me' })
+
+      await user.click(trigger())
+      await user.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(screen.queryByLabelText('Payment amount (INR)')).not.toBeInTheDocument()
+      expect(trigger()).toHaveFocus()
+
+      await user.click(trigger())
+      await user.keyboard('{Escape}')
+      expect(screen.queryByLabelText('Payment amount (INR)')).not.toBeInTheDocument()
+      expect(trigger()).toHaveFocus()
+    })
+
+    it('shows Expired (not Partially paid) once the expiry passes, and offers no payment action', async () => {
+      const now = Date.now()
+      setup([
+        makeLink({
+          id: 'x',
+          amountPaise: 1000,
+          description: 'Lapsed part-payer',
+          email: 'a@b.co',
+          allowPartial: true,
+          createdAt: now - 5000,
+          expiresAt: now - 1000,
+          payments: [makePayment(400, now - 3000)],
+        }),
+      ])
+      const row = await screen.findByRole('row', { name: /Lapsed part-payer/ })
+      expect(within(row).getByText('Expired', { selector: 'span' })).toBeInTheDocument()
+      expect(within(row).getByText('₹4.00 paid')).toBeInTheDocument()
+      expect(within(row).getByText('₹6.00 due')).toBeInTheDocument()
+      expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+      expect(filterButton(/^Partially paid \(0\)/)).toBeInTheDocument()
+      expect(filterButton(/^Expired \(1\)/)).toBeInTheDocument()
+    })
+  })
+
+  it('shows links whose expiry has passed as Expired, without a Record payment button', async () => {
     const now = Date.now()
     const { user } = setup([
       makeLink({ id: 'e', amountPaise: 100, description: 'Old link', email: 'a@b.co', createdAt: now - 5000, expiresAt: now - 1000 }),
@@ -130,18 +257,19 @@ describe('App', () => {
     expect(screen.getByLabelText('Amount (INR)')).toHaveValue('')
   })
 
-  it('shows an error with Retry when marking as paid fails', async () => {
+  it('shows an error with Retry when recording a payment fails, then succeeds on Retry', async () => {
     const { api, user } = setup()
     await screen.findByText('No payment links yet')
     await createViaForm(user, '10', 'Will fail once')
 
     api.failNext()
-    await user.click(screen.getByRole('button', { name: /Mark as paid/ }))
+    await user.click(screen.getByRole('button', { name: /Record payment/ }))
+    await user.click(screen.getByRole('button', { name: 'Record' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
-    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Active', { selector: 'span' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText('Paid')).toBeInTheDocument()
+    expect(await screen.findByText('Paid', { selector: 'span' })).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

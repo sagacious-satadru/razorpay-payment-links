@@ -6,6 +6,7 @@ export type LoadState = 'loading' | 'ready' | 'error'
 
 export interface ActionError {
   id: string
+  amountPaise: number
   message: string
 }
 
@@ -55,14 +56,16 @@ export function useLinks(api: LinksApi) {
   )
 
   const recordPayment = useCallback(
-    async (id: string, amountPaise: number) => {
+    async (id: string, amountPaise: number): Promise<boolean> => {
       setActionError(null)
       setPendingIds((current) => new Set(current).add(id))
       try {
         const updated = await api.recordPayment(id, amountPaise)
         setLinks((current) => current.map((link) => (link.id === id ? updated : link)))
+        return true
       } catch (error) {
-        setActionError({ id, message: messageOf(error) })
+        setActionError({ id, amountPaise, message: messageOf(error) })
+        return false
       } finally {
         setPendingIds((current) => {
           const next = new Set(current)

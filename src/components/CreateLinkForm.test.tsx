@@ -110,6 +110,94 @@ describe('CreateLinkForm', () => {
     expect(onCreate.mock.calls[0][0].expiresAt).toBeGreaterThan(Date.now())
   })
 
+  describe('partial payments', () => {
+    const allowPartial = () => screen.getByLabelText('Allow partial payments')
+    const minFirst = () => screen.getByLabelText('Minimum first payment (INR)')
+
+    it('shows the minimum first payment input only while the box is ticked', async () => {
+      const user = userEvent.setup()
+      render(<CreateLinkForm onCreate={vi.fn()} />)
+      expect(allowPartial()).not.toBeChecked()
+      expect(screen.queryByLabelText('Minimum first payment (INR)')).not.toBeInTheDocument()
+
+      await user.click(allowPartial())
+      expect(minFirst()).toBeInTheDocument()
+
+      await user.click(allowPartial())
+      expect(screen.queryByLabelText('Minimum first payment (INR)')).not.toBeInTheDocument()
+    })
+
+    it('requires the minimum when ticked, and focuses it', async () => {
+      const user = userEvent.setup()
+      const onCreate = vi.fn()
+      render(<CreateLinkForm onCreate={onCreate} />)
+      await user.type(amount(), '500')
+      await user.type(description(), 'Part')
+      await user.type(email(), 'a@b.co')
+      await user.click(allowPartial())
+      await user.click(submit())
+
+      expect(onCreate).not.toHaveBeenCalled()
+      expect(minFirst()).toHaveFocus()
+      expect(minFirst()).toHaveAttribute('aria-invalid', 'true')
+      expect(minFirst()).toHaveAccessibleDescription(/Enter a minimum first payment/)
+    })
+
+    it.each([
+      ['0', /greater than/],
+      ['500.01', /cannot exceed the link amount/],
+      ['1.005', /valid amount/],
+    ])('rejects a minimum of %j', async (value, message) => {
+      const user = userEvent.setup()
+      render(<CreateLinkForm onCreate={vi.fn()} />)
+      await user.type(amount(), '500')
+      await user.click(allowPartial())
+      await user.type(minFirst(), value)
+      await user.tab()
+      expect(minFirst()).toHaveAccessibleDescription(message)
+    })
+
+    it('does not validate (or send) the minimum when the box is not ticked', async () => {
+      const user = userEvent.setup()
+      const onCreate = vi.fn().mockResolvedValue(undefined)
+      render(<CreateLinkForm onCreate={onCreate} />)
+      await user.click(allowPartial())
+      await user.type(minFirst(), 'garbage')
+      await user.click(allowPartial()) // untick
+      await user.type(amount(), '100')
+      await user.type(description(), 'Whole')
+      await user.type(email(), 'a@b.co')
+      await user.click(submit())
+      expect(onCreate).toHaveBeenCalledWith({
+        amountPaise: 10_000,
+        description: 'Whole',
+        email: 'a@b.co',
+        allowPartial: false,
+      })
+    })
+
+    it('submits the minimum as integer paise', async () => {
+      const user = userEvent.setup()
+      const onCreate = vi.fn().mockResolvedValue(undefined)
+      render(<CreateLinkForm onCreate={onCreate} />)
+      await user.type(amount(), '500')
+      await user.click(allowPartial())
+      await user.type(minFirst(), '150.50')
+      await user.type(description(), 'Part')
+      await user.type(email(), 'a@b.co')
+      await user.click(submit())
+      expect(onCreate).toHaveBeenCalledWith({
+        amountPaise: 50_000,
+        description: 'Part',
+        email: 'a@b.co',
+        allowPartial: true,
+        minFirstPaymentPaise: 15_050,
+      })
+      await screen.findByText(/created/)
+      expect(allowPartial()).not.toBeChecked() // form reset
+    })
+  })
+
   it('shows an error with Retry on failure and keeps the entered values', async () => {
     const user = userEvent.setup()
     const onCreate = vi

@@ -28,6 +28,11 @@ export function parseAmountInput(input: string): AmountParse {
   return paise === null ? { ok: false, reason: 'too_large' } : { ok: true, paise }
 }
 
+/** Integer paise -> plain rupee text for an input, by string arithmetic: 250 -> "2.50". */
+export function paiseToRupeeString(paise: number): string {
+  return `${Math.trunc(paise / 100)}.${String(paise % 100).padStart(2, '0')}`
+}
+
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
 
 export function formatPaise(paise: number): string {

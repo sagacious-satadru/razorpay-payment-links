@@ -1,7 +1,7 @@
 import { filterLabel } from '../domain/status'
 import type { StatusFilter as Filter } from '../domain/types'
 
-const FILTERS: readonly Filter[] = ['all', 'active', 'paid', 'expired']
+const FILTERS: readonly Filter[] = ['all', 'active', 'partially_paid', 'paid', 'expired']
 
 interface StatusFilterProps {
   value: Filter
