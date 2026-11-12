@@ -14,6 +14,13 @@ All data lives in memory behind a mock async API (no backend, nothing persists a
 
 Also: `pnpm typecheck`, `pnpm lint`, `pnpm build`.
 
+npm equivalents:
+
+- Install: `npm install && npx playwright install chromium`
+- Run: `npm run dev` (http://localhost:5173)
+- Unit tests: `npm test`
+- E2E: `npm run e2e`
+
 ## What it does
 
 - **Create** a link: amount (INR, up to 2 decimals, > 0, max ₹5,00,000), description (required,
