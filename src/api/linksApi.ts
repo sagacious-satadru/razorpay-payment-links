@@ -34,9 +34,8 @@ export function createLinksApi(
 ): LinksApi & FailureControl {
   const { delayMs = 300, now = Date.now, seed, storage = null } = options
   let links: PaymentLink[] = [...(seed ?? readLinks(storage))].sort((a, b) => b.createdAt - a.createdAt)
-  let sequence = 0
-  // Ids must stay unique across page loads, so they include a time component.
-  const idPrefix = `plink_${Date.now().toString(36)}`
+  // Random UUIDs stay unique across reloads, tabs and frozen clocks, with no ordering assumptions.
+  const newId = () => crypto.randomUUID()
   let failuresLeft = 0
   let failAll = false
 
@@ -54,10 +53,9 @@ export function createLinksApi(
 
     createLink: (input) =>
       simulate(() => {
-        sequence += 1
         const link: PaymentLink = {
           ...input,
-          id: `${idPrefix}_${sequence}`,
+          id: newId(),
           createdAt: now(),
           payments: [],
         }
@@ -75,7 +73,7 @@ export function createLinksApi(
         // Replace (never mutate) the payments array so earlier copies stay unchanged.
         link.payments = [
           ...link.payments,
-          { id: `${link.id}_pay_${link.payments.length + 1}`, amountPaise, at: now() },
+          { id: newId(), amountPaise, at: now() },
         ]
         writeLinks(storage, links)
         return { ...link }
