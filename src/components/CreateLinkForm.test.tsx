@@ -89,6 +89,7 @@ describe('CreateLinkForm', () => {
       amountPaise: 50_000,
       description: 'Invoice 42',
       email: 'customer@example.com',
+      allowPartial: false,
     })
     expect(await screen.findByRole('status')).toHaveTextContent('Payment link for ₹500.00 created.')
     expect(amount()).toHaveValue('')

@@ -1,4 +1,4 @@
-import { AMOUNT_PATTERN, MAX_AMOUNT_PAISE, parseRupeesToPaise } from './money'
+import { AMOUNT_PATTERN, MAX_AMOUNT_PAISE, parseAmountInput, parseRupeesToPaise } from './money'
 import type { NewLinkInput } from './types'
 
 export const DESCRIPTION_MAX = 100
@@ -10,14 +10,25 @@ export interface LinkFormValues {
   phone: string
   /** `datetime-local` value (local time zone), e.g. "2026-12-01T18:30". Blank = never expires. */
   expiry: string
+  allowPartial: boolean
+  /** Rupee text; validated only when `allowPartial` is ticked. */
+  minFirstPayment: string
 }
 
-export type FieldName = 'amount' | 'description' | 'contact' | 'email' | 'phone' | 'expiry'
+export type FieldName =
+  | 'amount'
+  | 'minFirstPayment'
+  | 'description'
+  | 'contact'
+  | 'email'
+  | 'phone'
+  | 'expiry'
 export type FieldErrors = Partial<Record<FieldName, string>>
 
 /** Order used to decide which invalid field receives focus first. */
 export const FIELD_ORDER: readonly FieldName[] = [
   'amount',
+  'minFirstPayment',
   'description',
   'contact',
   'email',
@@ -43,6 +54,7 @@ export function validateLinkInput(raw: LinkFormValues, now: number): ValidationR
 
   const amountText = raw.amount.trim()
   let amountPaise = 0
+  let amountValid = false
   if (amountText === '') {
     errors.amount = 'Enter an amount.'
   } else if (!AMOUNT_PATTERN.test(amountText)) {
@@ -55,6 +67,26 @@ export function validateLinkInput(raw: LinkFormValues, now: number): ValidationR
       errors.amount = 'Amount must be greater than ₹0.'
     } else {
       amountPaise = parsed
+      amountValid = true
+    }
+  }
+
+  let minFirstPaymentPaise: number | undefined
+  if (raw.allowPartial) {
+    const min = parseAmountInput(raw.minFirstPayment)
+    if (!min.ok) {
+      errors.minFirstPayment =
+        min.reason === 'empty'
+          ? 'Enter a minimum first payment.'
+          : min.reason === 'format'
+            ? 'Enter a valid amount in rupees, with at most 2 decimal places.'
+            : 'Minimum first payment cannot exceed the link amount.'
+    } else if (min.paise <= 0) {
+      errors.minFirstPayment = 'Minimum first payment must be greater than ₹0.'
+    } else if (amountValid && min.paise > amountPaise) {
+      errors.minFirstPayment = 'Minimum first payment cannot exceed the link amount.'
+    } else {
+      minFirstPaymentPaise = min.paise
     }
   }
 
@@ -97,6 +129,8 @@ export function validateLinkInput(raw: LinkFormValues, now: number): ValidationR
     value: {
       amountPaise,
       description,
+      allowPartial: raw.allowPartial,
+      ...(raw.allowPartial && minFirstPaymentPaise !== undefined && { minFirstPaymentPaise }),
       ...(email !== '' && { email }),
       ...(phone !== '' && { phone }),
       ...(expiresAt !== undefined && { expiresAt }),

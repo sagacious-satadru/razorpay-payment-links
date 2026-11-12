@@ -4,10 +4,25 @@ export function assertNever(value: never): never {
   throw new Error(`Unhandled value: ${String(value)}`)
 }
 
-/** The single place where "expired" is computed. `now` is injected so this stays pure. */
+/** Derived: the sum of recorded payments. */
+export function paidPaise(link: PaymentLink): number {
+  return link.payments.reduce((sum, payment) => sum + payment.amountPaise, 0)
+}
+
+/** Derived: what is still owed. */
+export function duePaise(link: PaymentLink): number {
+  return link.amountPaise - paidPaise(link)
+}
+
+/**
+ * The single place where status (including "expired") is computed. `now` is injected so this
+ * stays pure. Order matters: paid > expired > partially_paid > active.
+ */
 export function getStatus(link: PaymentLink, now: number): LinkStatus {
-  if (link.paidAt !== undefined) return 'paid' // Paid is terminal, even after expiry passes
+  const paid = paidPaise(link)
+  if (paid >= link.amountPaise) return 'paid' // fully paid links never expire
   if (link.expiresAt !== undefined && link.expiresAt <= now) return 'expired'
+  if (paid > 0) return 'partially_paid'
   return 'active'
 }
 
@@ -15,6 +30,8 @@ export function statusLabel(status: LinkStatus): string {
   switch (status) {
     case 'active':
       return 'Active'
+    case 'partially_paid':
+      return 'Partially paid'
     case 'paid':
       return 'Paid'
     case 'expired':
@@ -24,10 +41,11 @@ export function statusLabel(status: LinkStatus): string {
   }
 }
 
-/** Only active links can be marked as paid. */
-export function canMarkPaid(status: LinkStatus): boolean {
+/** Payments can be recorded on Active and Partially paid links only. */
+export function canRecordPayment(status: LinkStatus): boolean {
   switch (status) {
     case 'active':
+    case 'partially_paid':
       return true
     case 'paid':
     case 'expired':
@@ -47,7 +65,13 @@ export function filterLinks(links: PaymentLink[], filter: StatusFilter, now: num
 }
 
 export function countByStatus(links: PaymentLink[], now: number): Record<StatusFilter, number> {
-  const counts: Record<StatusFilter, number> = { all: links.length, active: 0, paid: 0, expired: 0 }
+  const counts: Record<StatusFilter, number> = {
+    all: links.length,
+    active: 0,
+    partially_paid: 0,
+    paid: 0,
+    expired: 0,
+  }
   for (const link of links) counts[getStatus(link, now)] += 1
   return counts
 }

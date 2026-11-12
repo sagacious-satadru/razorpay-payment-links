@@ -54,12 +54,12 @@ export function useLinks(api: LinksApi) {
     [api],
   )
 
-  const markPaid = useCallback(
-    async (id: string) => {
+  const recordPayment = useCallback(
+    async (id: string, amountPaise: number) => {
       setActionError(null)
       setPendingIds((current) => new Set(current).add(id))
       try {
-        const updated = await api.markPaid(id)
+        const updated = await api.recordPayment(id, amountPaise)
         setLinks((current) => current.map((link) => (link.id === id ? updated : link)))
       } catch (error) {
         setActionError({ id, message: messageOf(error) })
@@ -82,7 +82,7 @@ export function useLinks(api: LinksApi) {
     loadError,
     reload: load,
     create,
-    markPaid,
+    recordPayment,
     pendingIds,
     actionError,
     dismissActionError,

@@ -1,6 +1,6 @@
 import { formatDateTime, formatPhone } from '../domain/format'
 import { formatPaise } from '../domain/money'
-import { canMarkPaid, getStatus, statusLabel } from '../domain/status'
+import { canRecordPayment, getStatus, statusLabel } from '../domain/status'
 import type { PaymentLink } from '../domain/types'
 
 interface LinksListProps {
@@ -58,7 +58,7 @@ export function LinksList({ links, now, pendingIds, onMarkPaid }: LinksListProps
                 <Time epochMs={link.createdAt} />
               </td>
               <td role="cell" data-label="Action">
-                {canMarkPaid(status) && (
+                {canRecordPayment(status) && (
                   <button
                     type="button"
                     className="btn btn--secondary"

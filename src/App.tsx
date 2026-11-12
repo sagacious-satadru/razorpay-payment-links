@@ -7,7 +7,7 @@ import { EmptyState } from './components/EmptyState'
 import { ErrorAlert } from './components/ErrorAlert'
 import { LinksList } from './components/LinksList'
 import { StatusFilter } from './components/StatusFilter'
-import { countByStatus, filterLinks } from './domain/status'
+import { countByStatus, duePaise, filterLinks } from './domain/status'
 import type { StatusFilter as Filter } from './domain/types'
 import { useLinks } from './hooks/useLinks'
 import { useNow } from './hooks/useNow'
@@ -25,13 +25,22 @@ export default function App({ api = defaultLinksApi }: AppProps) {
     loadError,
     reload,
     create,
-    markPaid,
+    recordPayment,
     pendingIds,
     actionError,
   } = useLinks(api)
 
   const counts = countByStatus(links, now)
   const visible = filterLinks(links, filter, now)
+
+  // Temporary until the inline "Record payment" form: settle the full amount due.
+  function payInFull(id: string) {
+    const link = links.find((candidate) => candidate.id === id)
+    if (link) void recordPayment(id, duePaise(link))
+  }
+  function retryAction() {
+    if (actionError) payInFull(actionError.id)
+  }
 
   return (
     <div className="app">
@@ -60,7 +69,7 @@ export default function App({ api = defaultLinksApi }: AppProps) {
               {actionError && (
                 <ErrorAlert
                   message={actionError.message}
-                  onRetry={() => void markPaid(actionError.id)}
+                  onRetry={() => retryAction()}
                 />
               )}
               {visible.length === 0 ? (
@@ -70,7 +79,7 @@ export default function App({ api = defaultLinksApi }: AppProps) {
                   links={visible}
                   now={now}
                   pendingIds={pendingIds}
-                  onMarkPaid={(id) => void markPaid(id)}
+                  onMarkPaid={payInFull}
                 />
               )}
             </>

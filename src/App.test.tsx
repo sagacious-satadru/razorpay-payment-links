@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { createLinksApi } from './api/linksApi'
 import type { PaymentLink } from './domain/types'
+import { makeLink, makePayment } from './test/factories'
 
 function setup(seed: PaymentLink[] = []) {
   const api = createLinksApi({ delayMs: 0, seed })
@@ -78,9 +79,9 @@ describe('App', () => {
   it('shows links whose expiry has passed as Expired, without a Mark as paid button', async () => {
     const now = Date.now()
     const { user } = setup([
-      { id: 'e', amountPaise: 100, description: 'Old link', email: 'a@b.co', createdAt: now - 5000, expiresAt: now - 1000 },
-      { id: 'a', amountPaise: 200, description: 'Live link', email: 'a@b.co', createdAt: now - 4000 },
-      { id: 'p', amountPaise: 300, description: 'Paid late', email: 'a@b.co', createdAt: now - 3000, expiresAt: now - 500, paidAt: now - 2000 },
+      makeLink({ id: 'e', amountPaise: 100, description: 'Old link', email: 'a@b.co', createdAt: now - 5000, expiresAt: now - 1000 }),
+      makeLink({ id: 'a', amountPaise: 200, description: 'Live link', email: 'a@b.co', createdAt: now - 4000 }),
+      makeLink({ id: 'p', amountPaise: 300, description: 'Paid late', email: 'a@b.co', createdAt: now - 3000, expiresAt: now - 500, payments: [makePayment(300, now - 2000)] }),
     ])
     await screen.findByText('Old link')
 

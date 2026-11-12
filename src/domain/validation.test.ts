@@ -9,6 +9,8 @@ const valid: LinkFormValues = {
   email: 'Customer@Example.com',
   phone: '',
   expiry: '',
+  allowPartial: false,
+  minFirstPayment: '',
 }
 
 function errorsFor(overrides: Partial<LinkFormValues>) {
@@ -22,7 +24,12 @@ describe('validateLinkInput', () => {
     const result = validateLinkInput(valid, NOW)
     expect(result).toEqual({
       ok: true,
-      value: { amountPaise: 50_000, description: 'Invoice 42', email: 'customer@example.com' },
+      value: {
+        amountPaise: 50_000,
+        description: 'Invoice 42',
+        email: 'customer@example.com',
+        allowPartial: false,
+      },
     })
   })
 
@@ -109,6 +116,43 @@ describe('validateLinkInput', () => {
     })
     it('rejects garbage', () => {
       expect(errorsFor({ expiry: 'tomorrow' }).expiry).toBeDefined()
+    })
+  })
+
+  describe('minimum first payment', () => {
+    const partial = { allowPartial: true }
+
+    it('is ignored (not validated, not saved) when partial payments are not allowed', () => {
+      const result = validateLinkInput({ ...valid, minFirstPayment: 'garbage' }, NOW)
+      expect(result.ok && result.value).toMatchObject({ allowPartial: false })
+      expect(result.ok && 'minFirstPaymentPaise' in result.value).toBe(false)
+    })
+    it('is required when partial payments are allowed', () => {
+      expect(errorsFor({ ...partial, minFirstPayment: '' }).minFirstPayment).toMatch(/Enter a minimum/)
+      expect(errorsFor({ ...partial, minFirstPayment: '  ' }).minFirstPayment).toBeDefined()
+    })
+    it('must be > 0', () => {
+      expect(errorsFor({ ...partial, minFirstPayment: '0' }).minFirstPayment).toMatch(/greater than/)
+      expect(errorsFor({ ...partial, minFirstPayment: '0.00' }).minFirstPayment).toMatch(/greater than/)
+    })
+    it('must be a valid amount', () => {
+      expect(errorsFor({ ...partial, minFirstPayment: '1.005' }).minFirstPayment).toMatch(/valid amount/)
+      expect(errorsFor({ ...partial, minFirstPayment: '1e2' }).minFirstPayment).toMatch(/valid amount/)
+    })
+    it('must be <= the amount', () => {
+      expect(errorsFor({ ...partial, minFirstPayment: '500.01' }).minFirstPayment).toMatch(/cannot exceed/)
+      for (const minFirstPayment of ['0.01', '200', '500']) {
+        expect(validateLinkInput({ ...valid, ...partial, minFirstPayment }, NOW).ok).toBe(true)
+      }
+    })
+    it('is saved as integer paise', () => {
+      const result = validateLinkInput({ ...valid, ...partial, minFirstPayment: '150.50' }, NOW)
+      expect(result.ok && result.value).toMatchObject({ allowPartial: true, minFirstPaymentPaise: 15_050 })
+    })
+    it('does not compare with an invalid amount (only reports the amount error)', () => {
+      const errors = errorsFor({ ...partial, amount: 'abc', minFirstPayment: '10' })
+      expect(errors.amount).toBeDefined()
+      expect(errors.minFirstPayment).toBeUndefined()
     })
   })
 

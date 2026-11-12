@@ -15,6 +15,19 @@ export function parseRupeesToPaise(input: string): number | null {
   return Number.isSafeInteger(paise) ? paise : null
 }
 
+export type AmountParse =
+  | { ok: true; paise: number }
+  | { ok: false; reason: 'empty' | 'format' | 'too_large' }
+
+/** Like parseRupeesToPaise, but says why parsing failed so callers can show a precise message. */
+export function parseAmountInput(input: string): AmountParse {
+  const text = input.trim()
+  if (text === '') return { ok: false, reason: 'empty' }
+  if (!AMOUNT_PATTERN.test(text)) return { ok: false, reason: 'format' }
+  const paise = parseRupeesToPaise(text)
+  return paise === null ? { ok: false, reason: 'too_large' } : { ok: true, paise }
+}
+
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
 
 export function formatPaise(paise: number): string {

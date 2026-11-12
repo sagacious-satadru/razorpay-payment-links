@@ -1,11 +1,11 @@
-import { canMarkPaid, getStatus } from '../domain/status'
+import { checkPaymentAmount } from '../domain/payments'
 import type { NewLinkInput, PaymentLink } from '../domain/types'
 
 /** The only surface the UI talks to; a real backend can implement the same interface. */
 export interface LinksApi {
   listLinks(): Promise<PaymentLink[]>
   createLink(input: NewLinkInput): Promise<PaymentLink>
-  markPaid(id: string): Promise<PaymentLink>
+  recordPayment(id: string, amountPaise: number): Promise<PaymentLink>
 }
 
 export interface FailureControl {
@@ -49,24 +49,27 @@ export function createLinksApi(
     createLink: (input) =>
       simulate(() => {
         sequence += 1
-        const link: PaymentLink = { ...input, id: `plink_${sequence}`, createdAt: now() }
+        const link: PaymentLink = {
+          ...input,
+          id: `plink_${sequence}`,
+          createdAt: now(),
+          payments: [],
+        }
         links = [link, ...links]
         return { ...link }
       }),
 
-    markPaid: (id) =>
+    recordPayment: (id, amountPaise) =>
       simulate(() => {
         const link = links.find((candidate) => candidate.id === id)
         if (!link) throw new ApiError('Payment link not found.')
-        const status = getStatus(link, now())
-        if (!canMarkPaid(status)) {
-          throw new ApiError(
-            status === 'expired'
-              ? 'This link has expired and cannot be marked as paid.'
-              : 'This link is already paid.',
-          )
-        }
-        link.paidAt = now()
+        const error = checkPaymentAmount(link, amountPaise, now())
+        if (error) throw new ApiError(error)
+        // Replace (never mutate) the payments array so earlier copies stay unchanged.
+        link.payments = [
+          ...link.payments,
+          { id: `${link.id}_pay_${link.payments.length + 1}`, amountPaise, at: now() },
+        ]
         return { ...link }
       }),
 

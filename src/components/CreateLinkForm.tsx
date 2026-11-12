@@ -8,7 +8,15 @@ import { ErrorAlert } from './ErrorAlert'
 
 type InputName = Exclude<FieldName, 'contact'>
 
-const EMPTY: LinkFormValues = { amount: '', description: '', email: '', phone: '', expiry: '' }
+const EMPTY: LinkFormValues = {
+  amount: '',
+  description: '',
+  email: '',
+  phone: '',
+  expiry: '',
+  allowPartial: false,
+  minFirstPayment: '',
+}
 
 interface FieldProps {
   baseId: string
@@ -77,6 +85,7 @@ export function CreateLinkForm({ onCreate }: CreateLinkFormProps) {
   const expiryRef = useRef<HTMLInputElement>(null)
   const focusTargets: Record<FieldName, RefObject<HTMLInputElement | null>> = {
     amount: amountRef,
+    minFirstPayment: amountRef, // temporary; real field arrives with the UI step
     description: descriptionRef,
     contact: emailRef,
     email: emailRef,
@@ -99,7 +108,7 @@ export function CreateLinkForm({ onCreate }: CreateLinkFormProps) {
 
   function handleChange(field: InputName) {
     return (event: ChangeEvent<HTMLInputElement>) => {
-      const next = { ...values, [field]: event.target.value }
+      const next: LinkFormValues = { ...values, [field]: event.target.value }
       setValues(next)
       setSuccess('')
       const isContact = field === 'email' || field === 'phone'

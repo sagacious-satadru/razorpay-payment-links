@@ -1,65 +1,95 @@
-import { canMarkPaid, countByStatus, filterLinks, getStatus, statusLabel } from './status'
-import type { PaymentLink } from './types'
+import { makeLink, makePayment } from '../test/factories'
+import {
+  canRecordPayment,
+  countByStatus,
+  duePaise,
+  filterLinks,
+  getStatus,
+  paidPaise,
+  statusLabel,
+} from './status'
+import { LINK_STATUSES } from './types'
+import type { LinkStatus, PaymentLink } from './types'
 
 const NOW = 1_000_000
+const FUTURE = NOW + 1000
+const PAST = NOW - 1000
 
-function link(overrides: Partial<PaymentLink> = {}): PaymentLink {
-  return { id: 'x', amountPaise: 100, description: 'd', createdAt: 0, ...overrides }
-}
-
-describe('getStatus', () => {
-  it('is active with no expiry', () => {
-    expect(getStatus(link(), NOW)).toBe('active')
+describe('paidPaise / duePaise (derived)', () => {
+  it('sums payments and subtracts from the amount', () => {
+    const link = makeLink({ amountPaise: 1000, payments: [makePayment(200), makePayment(300)] })
+    expect(paidPaise(link)).toBe(500)
+    expect(duePaise(link)).toBe(500)
   })
-  it('is active before the expiry', () => {
-    expect(getStatus(link({ expiresAt: NOW + 1 }), NOW)).toBe('active')
-  })
-  it('is expired exactly at the expiry (boundary)', () => {
-    expect(getStatus(link({ expiresAt: NOW }), NOW)).toBe('expired')
-  })
-  it('is expired after the expiry', () => {
-    expect(getStatus(link({ expiresAt: NOW - 1 }), NOW)).toBe('expired')
-  })
-  it('is paid when paidAt is set', () => {
-    expect(getStatus(link({ paidAt: 5 }), NOW)).toBe('paid')
-  })
-  it('stays paid after the expiry passes', () => {
-    expect(getStatus(link({ paidAt: 5, expiresAt: NOW - 1000 }), NOW)).toBe('paid')
+  it('is zero paid / full due with no payments', () => {
+    const link = makeLink({ amountPaise: 1000 })
+    expect(paidPaise(link)).toBe(0)
+    expect(duePaise(link)).toBe(1000)
   })
 })
 
-describe('canMarkPaid / statusLabel', () => {
-  it('only active links can be marked paid', () => {
-    expect(canMarkPaid('active')).toBe(true)
-    expect(canMarkPaid('paid')).toBe(false)
-    expect(canMarkPaid('expired')).toBe(false)
+describe('getStatus matrix (paid > expired > partially_paid > active)', () => {
+  const full = [makePayment(1000)]
+  const part = [makePayment(400)]
+
+  const rows: Array<[string, Partial<PaymentLink>, LinkStatus]> = [
+    ['nothing paid, no expiry', {}, 'active'],
+    ['nothing paid, future expiry', { expiresAt: FUTURE }, 'active'],
+    ['nothing paid, expiry exactly now (boundary)', { expiresAt: NOW }, 'expired'],
+    ['nothing paid, past expiry', { expiresAt: PAST }, 'expired'],
+    ['partly paid, no expiry', { payments: part }, 'partially_paid'],
+    ['partly paid, future expiry', { payments: part, expiresAt: FUTURE }, 'partially_paid'],
+    ['partly paid, past expiry -> Expired wins over Partially paid', { payments: part, expiresAt: PAST }, 'expired'],
+    ['fully paid, no expiry', { payments: full }, 'paid'],
+    ['fully paid, future expiry', { payments: full, expiresAt: FUTURE }, 'paid'],
+    ['fully paid, past expiry -> Paid never expires', { payments: full, expiresAt: PAST }, 'paid'],
+    ['fully paid, expiry exactly now', { payments: full, expiresAt: NOW }, 'paid'],
+    ['paid in several instalments', { payments: [makePayment(400), makePayment(600)] }, 'paid'],
+  ]
+
+  it.each(rows)('%s', (_name, overrides, expected) => {
+    expect(getStatus(makeLink(overrides), NOW)).toBe(expected)
   })
-  it('labels each status', () => {
-    expect(['active', 'paid', 'expired'].map((s) => statusLabel(s as 'active'))).toEqual([
-      'Active',
-      'Paid',
-      'Expired',
-    ])
+})
+
+describe('canRecordPayment / statusLabel', () => {
+  it('payments can be recorded only on active and partially paid links', () => {
+    expect(canRecordPayment('active')).toBe(true)
+    expect(canRecordPayment('partially_paid')).toBe(true)
+    expect(canRecordPayment('paid')).toBe(false)
+    expect(canRecordPayment('expired')).toBe(false)
+  })
+  it('labels every status', () => {
+    expect(LINK_STATUSES.map(statusLabel)).toEqual(['Active', 'Partially paid', 'Paid', 'Expired'])
   })
 })
 
 describe('filterLinks / countByStatus', () => {
   const links = [
-    link({ id: 'a' }),
-    link({ id: 'b', paidAt: 1 }),
-    link({ id: 'c', expiresAt: NOW - 1 }),
-    link({ id: 'd' }),
+    makeLink({ id: 'a' }),
+    makeLink({ id: 'b', payments: [makePayment(1000)] }),
+    makeLink({ id: 'c', expiresAt: PAST }),
+    makeLink({ id: 'd', payments: [makePayment(1)] }),
+    makeLink({ id: 'e', payments: [makePayment(1)], expiresAt: PAST }),
   ]
 
   it('returns everything for "all"', () => {
-    expect(filterLinks(links, 'all', NOW)).toHaveLength(4)
+    expect(filterLinks(links, 'all', NOW)).toHaveLength(5)
   })
   it('filters by derived status', () => {
-    expect(filterLinks(links, 'active', NOW).map((l) => l.id)).toEqual(['a', 'd'])
-    expect(filterLinks(links, 'paid', NOW).map((l) => l.id)).toEqual(['b'])
-    expect(filterLinks(links, 'expired', NOW).map((l) => l.id)).toEqual(['c'])
+    const ids = (f: Parameters<typeof filterLinks>[1]) => filterLinks(links, f, NOW).map((l) => l.id)
+    expect(ids('active')).toEqual(['a'])
+    expect(ids('partially_paid')).toEqual(['d'])
+    expect(ids('paid')).toEqual(['b'])
+    expect(ids('expired')).toEqual(['c', 'e'])
   })
   it('counts per status', () => {
-    expect(countByStatus(links, NOW)).toEqual({ all: 4, active: 2, paid: 1, expired: 1 })
+    expect(countByStatus(links, NOW)).toEqual({
+      all: 5,
+      active: 1,
+      partially_paid: 1,
+      paid: 1,
+      expired: 2,
+    })
   })
 })
